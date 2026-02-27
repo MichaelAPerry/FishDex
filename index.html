@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FishDex — Fishing Life List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=IBM+Plex+Mono:wght@300;400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+/* ── DESIGN TOKENS ─────────────────────────────────────────────── */
+:root {
+  --ink:    #06101d;
+  --deep:   #0b1a2e;
+  --card:   #0f2240;
+  --raised: #142b50;
+  --rim:    #1c3b60;
+  --mist:   #4a6f94;
+  --text:   #c8ddf0;
+  --bright: #e8f4ff;
+  --gold:   #c8a23e;
+  --gold2:  #e6c96c;
+  --teal:   #21d3b6;
+  --teal2:  #14a68c;
+  --coral:  #e05050;
+  --blue:   #6aabf7;
+  --serif:  'Playfair Display', Georgia, serif;
+  --mono:   'IBM Plex Mono', 'Courier New', monospace;
+  --body:   'Lora', Georgia, serif;
+  --radius: 10px;
+  --shadow: 0 4px 24px rgba(0,0,0,.45);
+}
+
+/* ── RESET + BASE ────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--ink);
+  color:var(--text);
+  font-family:var(--body);
+  font-size:16px;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+a{color:var(--teal);text-decoration:none}
+a:hover{text-decoration:underline}
+button{cursor:pointer}
+input,select,textarea{font-family:inherit}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--ink)}
+::-webkit-scrollbar-thumb{background:var(--rim);border-radius:3px}
+
+/* ── BACKGROUND TEXTURE ──────────────────────────────────────── */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:
+    radial-gradient(ellipse 60% 50% at 10% 90%,rgba(33,211,182,.05) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 10%,rgba(200,162,62,.06) 0%,transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cpath d='M30 5 Q55 30 30 55 Q5 30 30 5Z' fill='none' stroke='%231c3b60' stroke-width='.4' opacity='.35'/%3E%3C/svg%3E");
+  background-size:cover,cover,60px 60px;
+  pointer-events:none;z-index:0;
+}
+#app{position:relative;z-index:1}
+
+/* ── HEADER ──────────────────────────────────────────────────── */
+header{
+  position:sticky;top:0;z-index:100;
+  height:60px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 1.5rem;
+  background:rgba(6,16,29,.93);
+  border-bottom:1px solid var(--rim);
+  backdrop-filter:blur(14px);
+  gap:1rem;
+}
+.brand{
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--serif);
+  font-size:1.35rem;font-weight:900;
+  color:var(--gold);
+  white-space:nowrap;
+  letter-spacing:.01em;
+  flex-shrink:0;
+}
+.brand em{color:var(--teal);font-style:normal}
+.brand-fish{font-size:1.5rem;line-height:1}
+
+nav{display:flex;gap:2px;flex-wrap:nowrap;overflow-x:auto}
+nav::-webkit-scrollbar{height:0}
+nav button{
+  background:none;border:none;
+  padding:5px 11px;border-radius:6px;
+  color:var(--mist);
+  font-family:var(--mono);
+  font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;
+  white-space:nowrap;
+  transition:color .18s,background .18s;
+}
+nav button:hover{color:var(--text);background:var(--card)}
+nav button.active{color:var(--gold);background:rgba(200,162,62,.12)}
+
+.btn-log{
+  background:var(--gold);color:var(--ink);
+  border:none;
+  padding:7px 16px;border-radius:7px;
+  font-family:var(--mono);
+  font-size:.65rem;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
+  white-space:nowrap;flex-shrink:0;
+  transition:background .18s,transform .15s;
+}
+.btn-log:hover{background:var(--gold2);transform:translateY(-1px)}
+
+/* ── VIEWS ───────────────────────────────────────────────────── */
+.view{display:none;padding:1.75rem;max-width:1380px;margin:0 auto}
+.view.active{display:block}
+#view-map{padding:0;max-width:100%;height:calc(100vh - 60px)}
+#view-map.active{display:flex;flex-direction:column}
+
+/* ── PAGE HEADER ─────────────────────────────────────────────── */
+.ph{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;
+}
+.ph-eyebrow{
+  font-family:var(--mono);font-size:.6rem;
+  letter-spacing:.14em;text-transform:uppercase;
+  color:var(--mist);margin-bottom:3px;
+}
+.ph-title{
+  font-family:var(--serif);font-size:1.9rem;font-weight:700;
+  color:var(--bright);line-height:1.1;
+}
+.ph-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+
+/* ── BUTTONS ─────────────────────────────────────────────────── */
+.btn{
+  border:none;border-radius:7px;
+  font-family:var(--mono);font-size:.65rem;font-weight:500;
+  letter-spacing:.08em;text-transform:uppercase;
+  padding:7px 14px;
+  transition:all .18s;
+  display:inline-flex;align-items:center;gap:5px;
+}
+.btn-primary{background:var(--gold);color:var(--ink)}
+.btn-primary:hover{background:var(--gold2);transform:translateY(-1px)}
+.btn-secondary{background:var(--card);color:var(--mist);border:1px solid var(--rim)}
+.btn-secondary:hover{color:var(--text);border-color:var(--mist)}
+.btn-ghost{background:none;color:var(--mist);border:1px solid var(--rim)}
+.btn-ghost:hover{color:var(--gold);border-color:var(--gold)}
+.btn-danger{background:rgba(224,80,80,.1);color:var(--coral);border:1px solid rgba(224,80,80,.25)}
+.btn-danger:hover{background:rgba(224,80,80,.2)}
+
+/* ── STAT CARDS ──────────────────────────────────────────────── */
+.stats-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(145px,1fr));
+  gap:.875rem;
+  margin-bottom:1.5rem;
+}
+.stat{
+  background:var(--card);
+  border:1px solid var(--rim);
+  border-radius:var(--radius);
+  padding:1.1rem 1.25rem;
+  position:relative;overflow:hidden;
+  transition:transform .2s;
+}
+.stat:hover{transform:translateY(-2px)}
+.stat::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--teal),var(--gold));
+}
+.stat-label{font-family:var(--mono);font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mist);margin-bottom:.4rem}
+.stat-val{font-family:var(--serif);font-size:2rem;font-weight:700;color:var(--gold);line-height:1}
+.stat-sub{font-family:var(--mono);font-size:.62rem;color:var(--mist);margin-top:4px}
+
+/* ── PANEL / CARD ────────────────────────────────────────────── */
+.panel{
+  background:var(--card);
+  border:1px solid var(--rim);
+  border-radius:var(--radius);
+  padding:1.4rem;
+}
+.panel-title{
+  font-family:var(--serif);font-size:.95rem;font-weight:600;
+  color:var(--gold);margin-bottom:1rem;
+  display:flex;align-items:center;gap:7px;
+}
+
+/* ── DASHBOARD GRID ──────────────────────────────────────────── */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+@media(max-width:860px){.dash-grid{grid-template-columns:1fr}}
+
+/* recent / pb list */
+.row-list{display:flex;flex-direction:column;gap:8px}
+.row-item{
+  background:var(--deep);
+  border:1px solid var(--rim);
+  border-radius:8px;padding:9px 13px;
+  display:flex;justify-content:space-between;align-items:center;
+  cursor:pointer;transition:border-color .18s,background .18s;
+}
+.row-item:hover{border-color:var(--teal2);background:var(--raised)}
+.row-species{font-family:var(--serif);font-size:.95rem;color:var(--bright)}
+.row-meta{font-family:var(--mono);font-size:.6rem;color:var(--mist);margin-top:2px}
+.row-size{font-family:var(--mono);font-size:.85rem;color:var(--teal);font-weight:500}
+
+/* ── LIFE LIST ───────────────────────────────────────────────── */
+.ll-controls{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem}
+.progress-wrap{
+  display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;
+}
+.prog-bar{flex:1;height:6px;background:var(--rim);border-radius:20px;overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--gold));border-radius:20px;transition:width .5s ease}
+.prog-label{font-family:var(--mono);font-size:.65rem;color:var(--mist);white-space:nowrap}
+
+.species-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.7rem}
+.sp-card{
+  background:var(--card);border:1px solid var(--rim);
+  border-radius:9px;padding:11px 14px;
+  cursor:pointer;transition:all .2s;position:relative;
+}
+.sp-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.sp-card.caught{
+  border-color:var(--teal2);
+  background:linear-gradient(135deg,var(--card),rgba(20,166,140,.12));
+}
+.sp-card.caught::after{
+  content:'✓';position:absolute;top:8px;right:10px;
+  color:var(--teal);font-family:var(--mono);font-size:.75rem;
+}
+.sp-name{font-family:var(--serif);font-size:.92rem;color:var(--bright);line-height:1.3}
+.sp-count{font-family:var(--mono);font-size:.6rem;color:var(--mist);margin-top:3px}
+.sp-card.caught .sp-count{color:var(--teal)}
+
+/* ── LOG TABLE ───────────────────────────────────────────────── */
+.log-controls{display:flex;gap:.625rem;flex-wrap:wrap;align-items:center;margin-bottom:1.25rem}
+.search-input,.filter-sel{
+  background:var(--card);border:1px solid var(--rim);
+  border-radius:7px;padding:7px 12px;
+  color:var(--text);font-family:var(--mono);font-size:.73rem;
+  outline:none;transition:border-color .18s;
+}
+.search-input:focus,.filter-sel:focus{border-color:var(--teal2)}
+.search-input{flex:1;min-width:180px}
+
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--rim)}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.71rem}
+thead th{
+  background:var(--deep);padding:9px 11px;
+  text-align:left;color:var(--mist);
+  letter-spacing:.09em;text-transform:uppercase;font-size:.58rem;font-weight:500;
+  border-bottom:1px solid var(--rim);
+  white-space:nowrap;cursor:pointer;user-select:none;
+}
+thead th:hover{color:var(--gold)}
+thead th[data-sort].asc::after{content:' ↑';color:var(--gold)}
+thead th[data-sort].desc::after{content:' ↓';color:var(--gold)}
+tbody tr{border-bottom:1px solid rgba(28,59,96,.5);transition:background .14s}
+tbody tr:hover{background:var(--raised)}
+tbody td{padding:9px 11px;color:var(--text);vertical-align:middle;white-space:nowrap}
+.cell-species{font-family:var(--serif);font-size:.82rem;color:var(--bright)}
+.cell-len{color:var(--teal)}
+.cell-note{max-width:160px;overflow:hidden;text-overflow:ellipsis;color:var(--mist)}
+.cell-lure{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.log-footer{font-family:var(--mono);font-size:.6rem;color:var(--mist);text-align:right;margin-top:.6rem}
+
+/* tags */
+.tag{display:inline-block;padding:2px 7px;border-radius:20px;font-size:.58rem;letter-spacing:.05em;font-family:var(--mono)}
+.tag-r{background:rgba(33,211,182,.1);color:var(--teal);border:1px solid rgba(33,211,182,.25)}
+.tag-k{background:rgba(200,162,62,.1);color:var(--gold);border:1px solid rgba(200,162,62,.25)}
+.tag-m{background:rgba(106,171,247,.1);color:var(--blue);border:1px solid rgba(106,171,247,.25)}
+.tag-e{background:rgba(74,111,148,.1);color:var(--mist);border:1px solid rgba(74,111,148,.25)}
+.tag-photo{background:rgba(33,211,182,.08);color:var(--teal);border:1px solid rgba(33,211,182,.2);cursor:pointer}
+.tag-photo:hover{background:rgba(33,211,182,.18)}
+
+/* icon delete */
+.del-btn{background:none;border:none;color:var(--mist);padding:2px 5px;border-radius:4px;font-size:.8rem;transition:color .15s}
+.del-btn:hover{color:var(--coral)}
+
+/* ── GALLERY VIEW ────────────────────────────────────────────── */
+.gallery-controls{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:1.25rem}
+.gallery-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:.875rem;
+}
+.gallery-card{
+  background:var(--card);border:1px solid var(--rim);
+  border-radius:var(--radius);overflow:hidden;
+  cursor:pointer;transition:all .2s;
+  position:relative;
+}
+.gallery-card:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.gallery-thumb{
+  width:100%;aspect-ratio:4/3;object-fit:cover;
+  display:block;background:var(--deep);
+}
+.gallery-thumb-placeholder{
+  width:100%;aspect-ratio:4/3;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--deep);
+  font-size:2.5rem;
+  color:var(--rim);
+}
+.gallery-info{padding:10px 13px}
+.gallery-species{font-family:var(--serif);font-size:.9rem;color:var(--bright);font-weight:600}
+.gallery-meta{font-family:var(--mono);font-size:.6rem;color:var(--mist);margin-top:3px}
+.gallery-size{font-family:var(--mono);font-size:.72rem;color:var(--teal);margin-top:2px}
+
+/* slideshow trigger */
+.ss-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--card);border:1px solid var(--rim);
+  border-radius:var(--radius);padding:14px 18px;
+  margin-bottom:1.25rem;
+  flex-wrap:wrap;gap:.75rem;
+}
+.ss-label{font-family:var(--serif);font-size:1rem;color:var(--text)}
+.ss-label em{color:var(--gold);font-style:normal;font-weight:600}
+
+/* ── SLIDESHOW OVERLAY ───────────────────────────────────────── */
+#slideshow{
+  display:none;
+  position:fixed;inset:0;z-index:500;
+  background:rgba(4,10,20,.97);
+  flex-direction:column;
+  align-items:center;justify-content:center;
+}
+#slideshow.open{display:flex}
+
+.ss-img-wrap{
+  position:relative;
+  max-width:min(92vw,900px);
+  max-height:70vh;
+  display:flex;align-items:center;justify-content:center;
+}
+#ss-img{
+  max-width:100%;max-height:70vh;
+  object-fit:contain;
+  border-radius:8px;
+  box-shadow:0 8px 60px rgba(0,0,0,.8);
+}
+#ss-img-placeholder{
+  width:min(92vw,500px);height:50vh;
+  display:flex;align-items:center;justify-content:center;
+  font-size:6rem;
+  background:var(--card);border-radius:8px;
+  border:1px solid var(--rim);
+}
+
+.ss-info{
+  margin-top:1.25rem;
+  text-align:center;
+  max-width:600px;
+  padding:0 1rem;
+}
+.ss-species{font-family:var(--serif);font-size:1.6rem;font-weight:700;color:var(--bright)}
+.ss-details{font-family:var(--mono);font-size:.68rem;color:var(--mist);margin-top:5px;line-height:1.8}
+.ss-counter{font-family:var(--mono);font-size:.62rem;color:var(--mist);margin-top:.5rem;letter-spacing:.1em}
+
+.ss-arrow{
+  position:fixed;top:50%;transform:translateY(-50%);
+  background:rgba(15,34,64,.8);border:1px solid var(--rim);
+  color:var(--text);font-size:1.4rem;
+  padding:.6rem .9rem;border-radius:8px;
+  transition:all .18s;z-index:10;
+}
+.ss-arrow:hover{background:var(--raised);border-color:var(--gold);color:var(--gold)}
+#ss-prev{left:1rem}
+#ss-next{right:1rem}
+
+.ss-top{
+  position:fixed;top:1rem;right:1rem;
+  display:flex;gap:.5rem;z-index:10;
+}
+.ss-close,.ss-play{
+  background:rgba(15,34,64,.8);border:1px solid var(--rim);
+  color:var(--text);font-family:var(--mono);
+  font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;
+  padding:7px 13px;border-radius:7px;
+  transition:all .18s;
+}
+.ss-close:hover,.ss-play:hover{background:var(--raised);color:var(--gold);border-color:var(--gold)}
+
+.ss-dots{
+  position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
+  display:flex;gap:6px;
+}
+.ss-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--rim);border:none;
+  transition:background .2s,transform .2s;
+}
+.ss-dot.active{background:var(--gold);transform:scale(1.3)}
+
+/* ── MAP ─────────────────────────────────────────────────────── */
+.map-topbar{
+  padding:.875rem 1.25rem;
+  background:var(--deep);
+  border-bottom:1px solid var(--rim);
+  display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;
+}
+.map-topbar h2{font-family:var(--serif);font-size:1.1rem;color:var(--bright);font-weight:600;flex-shrink:0}
+.map-legend{
+  display:flex;gap:1rem;align-items:center;
+  font-family:var(--mono);font-size:.62rem;color:var(--mist);
+  background:rgba(11,26,46,.8);border:1px solid var(--rim);
+  border-radius:7px;padding:5px 12px;
+  margin-left:auto;
+}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+#leaflet-map{flex:1;min-height:0}
+
+/* Leaflet dark overrides */
+.leaflet-popup-content-wrapper{background:var(--card)!important;border:1px solid var(--rim)!important;color:var(--text)!important;border-radius:9px!important;box-shadow:var(--shadow)!important}
+.leaflet-popup-tip{background:var(--card)!important}
+
+/* ── STATS ───────────────────────────────────────────────────── */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+@media(max-width:800px){.charts-grid{grid-template-columns:1fr}}
+.chart-panel{background:var(--card);border:1px solid var(--rim);border-radius:var(--radius);padding:1.4rem}
+.chart-panel canvas{max-height:260px}
+
+/* ── MODAL ───────────────────────────────────────────────────── */
+.overlay{
+  display:none;position:fixed;inset:0;z-index:200;
+  background:rgba(4,10,20,.82);backdrop-filter:blur(8px);
+  align-items:flex-start;justify-content:center;
+  padding:2rem 1rem;overflow-y:auto;
+}
+.overlay.open{display:flex}
+.modal{
+  background:var(--card);border:1px solid var(--rim);
+  border-radius:14px;width:100%;max-width:680px;
+  padding:1.75rem;position:relative;
+  margin:auto;
+}
+.modal-title{
+  font-family:var(--serif);font-size:1.3rem;font-weight:700;
+  color:var(--gold);margin-bottom:1.4rem;
+}
+.modal-x{
+  position:absolute;top:1rem;right:1rem;
+  background:none;border:none;color:var(--mist);
+  font-size:1.1rem;padding:4px 8px;border-radius:5px;
+  transition:color .15s;
+}
+.modal-x:hover{color:var(--bright)}
+
+/* form grid */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+@media(max-width:480px){.fg{grid-template-columns:1fr}}
+.frow{display:flex;flex-direction:column;gap:4px}
+.frow.full{grid-column:1/-1}
+label{font-family:var(--mono);font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist)}
+input[type=text],input[type=date],input[type=number],input[type=url],select,textarea{
+  background:var(--deep);border:1px solid var(--rim);
+  border-radius:6px;padding:8px 11px;
+  color:var(--text);font-family:var(--mono);font-size:.75rem;
+  outline:none;width:100%;
+  transition:border-color .18s;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--teal2)}
+textarea{resize:vertical;min-height:56px}
+
+/* photo field */
+.photo-field{display:flex;flex-direction:column;gap:6px}
+.photo-tabs{display:flex;gap:4px}
+.photo-tab{
+  background:var(--deep);border:1px solid var(--rim);
+  border-radius:5px;padding:4px 10px;
+  font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--mist);transition:all .15s;
+}
+.photo-tab.active{background:rgba(33,211,182,.1);border-color:var(--teal2);color:var(--teal)}
+.photo-panel{display:none}
+.photo-panel.active{display:block}
+.photo-preview{
+  width:100%;height:120px;border-radius:6px;
+  object-fit:cover;border:1px solid var(--rim);
+  display:none;margin-top:5px;
+}
+.photo-preview.show{display:block}
+
+.form-actions{display:flex;gap:.625rem;justify-content:flex-end;margin-top:1.25rem}
+
+/* detail modal */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.875rem}
+.dk{font-family:var(--mono);font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);margin-bottom:3px}
+.dv{font-family:var(--body);font-size:.95rem;color:var(--bright)}
+.detail-photo{
+  grid-column:1/-1;border-radius:9px;overflow:hidden;
+  margin-bottom:.5rem;max-height:360px;
+}
+.detail-photo img{width:100%;max-height:360px;object-fit:cover;display:block}
+
+/* ── EMPTY STATE ─────────────────────────────────────────────── */
+.empty{
+  text-align:center;padding:3.5rem 2rem;
+  display:flex;flex-direction:column;align-items:center;gap:.875rem;
+}
+.empty-icon{font-size:3.5rem;opacity:.6}
+.empty h3{font-family:var(--serif);font-size:1.4rem;color:var(--text)}
+.empty p{font-family:var(--mono);font-size:.7rem;color:var(--mist);max-width:320px;line-height:1.7;letter-spacing:.04em}
+
+/* ── TOAST ───────────────────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;
+  background:var(--card);border:1px solid var(--teal2);
+  color:var(--teal);font-family:var(--mono);font-size:.72rem;
+  padding:10px 18px;border-radius:8px;
+  opacity:0;transform:translateY(6px);
+  transition:all .28s;pointer-events:none;
+  box-shadow:var(--shadow);
+}
+#toast.show{opacity:1;transform:translateY(0)}
+
+/* ── ANIMATIONS ──────────────────────────────────────────────── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp .35s ease both}
+.d1{animation-delay:.05s}.d2{animation-delay:.1s}.d3{animation-delay:.15s}.d4{animation-delay:.2s}
+
+/* no-results row */
+.no-res td{text-align:center;padding:2.5rem;color:var(--mist);font-family:var(--mono);font-size:.75rem}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ── HEADER ────────────────────────────────────────────────── -->
+<header>
+  <div class="brand"><span class="brand-fish">🎣</span>Fish<em>Dex</em></div>
+  <nav id="main-nav">
+    <button data-view="view-dash"     onclick="nav('view-dash')">Dashboard</button>
+    <button data-view="view-lifelist" onclick="nav('view-lifelist')">Life List</button>
+    <button data-view="view-log"      onclick="nav('view-log')">Log</button>
+    <button data-view="view-gallery"  onclick="nav('view-gallery')">Gallery</button>
+    <button data-view="view-map"      onclick="nav('view-map')">Map</button>
+    <button data-view="view-stats"    onclick="nav('view-stats')">Stats</button>
+  </nav>
+  <button class="btn-log" onclick="openAddModal()">+ Log Catch</button>
+</header>
+
+<!-- ── DASHBOARD ─────────────────────────────────────────────── -->
+<div id="view-dash" class="view active">
+  <div class="ph fade-up">
+    <div><div class="ph-eyebrow">Overview</div><h1 class="ph-title">Your FishDex</h1></div>
+    <div class="ph-actions">
+      <button class="btn btn-ghost" onclick="exportData()">↓ Export</button>
+      <button class="btn btn-ghost" onclick="triggerImport()">↑ Import</button>
+      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+    </div>
+  </div>
+  <div class="stats-row fade-up d1" id="dash-stats"></div>
+  <div class="dash-grid fade-up d2">
+    <div class="panel">
+      <div class="panel-title">🏆 Personal Bests</div>
+      <div id="dash-pbs" class="row-list"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">🕓 Recent Catches</div>
+      <div id="dash-recent" class="row-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LIFE LIST ──────────────────────────────────────────────── -->
+<div id="view-lifelist" class="view">
+  <div class="ph fade-up">
+    <div><div class="ph-eyebrow">Species Tracker</div><h1 class="ph-title">Life List</h1></div>
+    <div class="ph-actions">
+      <input class="search-input" id="ll-search" style="max-width:200px" placeholder="Search species…" oninput="renderLifeList()">
+      <label style="display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:.65rem;color:var(--mist);cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="ll-caught-only" onchange="renderLifeList()"> Caught only
+      </label>
+      <button class="btn btn-ghost" onclick="openAddSpeciesModal()">+ Add Species</button>
+    </div>
+  </div>
+  <div class="progress-wrap fade-up d1">
+    <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+    <div class="prog-label" id="prog-label">0 / 0 species</div>
+  </div>
+  <div class="species-grid fade-up d2" id="species-grid"></div>
+</div>
+
+<!-- ── LOG ───────────────────────────────────────────────────── -->
+<div id="view-log" class="view">
+  <div class="ph fade-up">
+    <div><div class="ph-eyebrow">Catch Records</div><h1 class="ph-title">Fishing Log</h1></div>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Log Catch</button>
+  </div>
+  <div class="log-controls fade-up d1">
+    <input class="search-input" id="log-search" placeholder="Search species, location, notes…" oninput="renderLog()">
+    <select class="filter-sel" id="f-species" onchange="renderLog()"><option value="">All Species</option></select>
+    <select class="filter-sel" id="f-where"   onchange="renderLog()"><option value="">All Locations</option></select>
+    <select class="filter-sel" id="f-state"   onchange="renderLog()"><option value="">All States</option></select>
+    <select class="filter-sel" id="f-kr"      onchange="renderLog()">
+      <option value="">All K/R</option>
+      <option value="Released">Released</option>
+      <option value="Kept">Kept</option>
+    </select>
+  </div>
+  <div class="table-wrap fade-up d2">
+    <table>
+      <thead>
+        <tr>
+          <th data-sort="date"    onclick="sortBy('date')">Date</th>
+          <th data-sort="species" onclick="sortBy('species')">Species</th>
+          <th data-sort="length"  onclick="sortBy('length')">Length</th>
+          <th data-sort="weight"  onclick="sortBy('weight')">Weight</th>
+          <th data-sort="where"   onclick="sortBy('where')">Location</th>
+          <th data-sort="state"   onclick="sortBy('state')">State</th>
+          <th>Water Type</th>
+          <th>Method</th>
+          <th>Lure</th>
+          <th>M/E</th>
+          <th>K/R</th>
+          <th>Photo</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="log-tbody"></tbody>
+    </table>
+  </div>
+  <div class="log-footer" id="log-footer"></div>
+</div>
+
+<!-- ── GALLERY ────────────────────────────────────────────────── -->
+<div id="view-gallery" class="view">
+  <div class="ph fade-up">
+    <div><div class="ph-eyebrow">Photos</div><h1 class="ph-title">Gallery</h1></div>
+    <div class="ph-actions">
+      <select class="filter-sel" id="g-species" onchange="renderGallery()"><option value="">All Species</option></select>
+      <select class="filter-sel" id="g-where"   onchange="renderGallery()"><option value="">All Locations</option></select>
+    </div>
+  </div>
+  <div id="ss-bar-wrap"></div>
+  <div id="gallery-grid" class="gallery-grid fade-up d1"></div>
+</div>
+
+<!-- ── MAP ───────────────────────────────────────────────────── -->
+<div id="view-map" class="view">
+  <div class="map-topbar">
+    <h2>Catch Locations</h2>
+    <select class="filter-sel" id="map-species" onchange="updateMapMarkers()"><option value="">All Species</option></select>
+    <select class="filter-sel" id="map-where"   onchange="updateMapMarkers()"><option value="">All Locations</option></select>
+    <div class="map-legend">
+      <span><span class="dot" style="background:var(--teal)"></span>Released</span>
+      <span><span class="dot" style="background:var(--gold)"></span>Kept</span>
+    </div>
+  </div>
+  <div id="leaflet-map"></div>
+</div>
+
+<!-- ── STATS ─────────────────────────────────────────────────── -->
+<div id="view-stats" class="view">
+  <div class="ph fade-up">
+    <div><div class="ph-eyebrow">Analytics</div><h1 class="ph-title">Statistics</h1></div>
+  </div>
+  <div class="charts-grid fade-up d1">
+    <div class="chart-panel"><div class="panel-title">🐟 Catches by Species</div><canvas id="ch-species"></canvas></div>
+    <div class="chart-panel"><div class="panel-title">📅 Catches by Month</div><canvas id="ch-month"></canvas></div>
+    <div class="chart-panel"><div class="panel-title">📍 Catches by Location</div><canvas id="ch-loc"></canvas></div>
+    <div class="chart-panel"><div class="panel-title">🪝 Lure Types Used</div><canvas id="ch-lure"></canvas></div>
+  </div>
+</div>
+
+<!-- ── SLIDESHOW ─────────────────────────────────────────────── -->
+<div id="slideshow">
+  <div class="ss-top">
+    <button class="ss-play" id="ss-play-btn" onclick="toggleAutoplay()">▶ Auto</button>
+    <button class="ss-close" onclick="closeSlideshow()">✕ Close</button>
+  </div>
+  <button class="ss-arrow" id="ss-prev" onclick="ssNav(-1)">&#8592;</button>
+  <button class="ss-arrow" id="ss-next" onclick="ssNav(+1)">&#8594;</button>
+  <div class="ss-img-wrap">
+    <img id="ss-img" src="" alt="" style="display:none">
+    <div id="ss-placeholder"></div>
+  </div>
+  <div class="ss-info">
+    <div class="ss-species" id="ss-species"></div>
+    <div class="ss-details" id="ss-details"></div>
+    <div class="ss-counter" id="ss-counter"></div>
+  </div>
+  <div class="ss-dots" id="ss-dots"></div>
+</div>
+
+<!-- ── ADD / EDIT MODAL ───────────────────────────────────────── -->
+<div class="overlay" id="modal-add">
+  <div class="modal">
+    <button class="modal-x" onclick="closeOverlay('modal-add')">✕</button>
+    <div class="modal-title" id="modal-add-title">Log a New Catch</div>
+    <form id="add-form" onsubmit="submitCatch(event)">
+      <input type="hidden" id="edit-id">
+      <div class="fg">
+        <div class="frow">
+          <label>Date *</label>
+          <input type="date" id="f-date" required>
+        </div>
+        <div class="frow">
+          <label>Species *</label>
+          <select id="f-sp" required></select>
+        </div>
+        <div class="frow">
+          <label>Location (Where)</label>
+          <input type="text" id="f-where-in" placeholder="e.g. Cumming Reservoir">
+        </div>
+        <div class="frow">
+          <label>Waterbody Type</label>
+          <select id="f-wb"></select>
+        </div>
+        <div class="frow">
+          <label>County</label>
+          <input type="text" id="f-county">
+        </div>
+        <div class="frow">
+          <label>State</label>
+          <input type="text" id="f-state-in" maxlength="4" placeholder="PA">
+        </div>
+        <div class="frow">
+          <label>Latitude</label>
+          <input type="number" id="f-lat" step="any" placeholder="40.0000">
+        </div>
+        <div class="frow">
+          <label>Longitude</label>
+          <input type="number" id="f-lon" step="any" placeholder="-79.0000">
+        </div>
+        <div class="frow">
+          <label>Quantity</label>
+          <input type="number" id="f-qty" min="1" value="1">
+        </div>
+        <div class="frow">
+          <label>Length (inches)</label>
+          <input type="number" id="f-len" step="0.1" min="0">
+        </div>
+        <div class="frow">
+          <label>Weight (lbs)</label>
+          <input type="number" id="f-wlb" step="0.1" min="0">
+        </div>
+        <div class="frow">
+          <label>Weight (oz)</label>
+          <input type="number" id="f-woz" step="0.1" min="0">
+        </div>
+        <div class="frow">
+          <label>Measured / Estimated</label>
+          <select id="f-me"></select>
+        </div>
+        <div class="frow">
+          <label>Access</label>
+          <select id="f-access"></select>
+        </div>
+        <div class="frow">
+          <label>Lure Type</label>
+          <select id="f-lure"></select>
+        </div>
+        <div class="frow">
+          <label>Lure Name / Model</label>
+          <input type="text" id="f-lurename">
+        </div>
+        <div class="frow">
+          <label>Lure Color</label>
+          <input type="text" id="f-lurecolor">
+        </div>
+        <div class="frow">
+          <label>Lure Size / Weight</label>
+          <input type="text" id="f-luresize">
+        </div>
+        <div class="frow">
+          <label>Method</label>
+          <select id="f-method"></select>
+        </div>
+        <div class="frow">
+          <label>Depth (ft)</label>
+          <input type="number" id="f-depth" step="0.1" min="0">
+        </div>
+        <div class="frow">
+          <label>Kept / Released</label>
+          <select id="f-kr-in"></select>
+        </div>
+        <div class="frow full">
+          <label>Photo</label>
+          <div class="photo-field">
+            <div class="photo-tabs">
+              <button type="button" class="photo-tab active" id="tab-url" onclick="switchPhotoTab('url')">URL / Link</button>
+              <button type="button" class="photo-tab" id="tab-file" onclick="switchPhotoTab('file')">Upload File</button>
+            </div>
+            <div class="photo-panel active" id="panel-url">
+              <input type="url" id="f-photo-url" placeholder="https://…" oninput="previewPhotoUrl(this.value)">
+            </div>
+            <div class="photo-panel" id="panel-file">
+              <input type="file" id="f-photo-file" accept="image/*" onchange="previewPhotoFile(this)">
+            </div>
+            <img class="photo-preview" id="photo-preview" src="" alt="Preview">
+          </div>
+        </div>
+        <div class="frow full">
+          <label>Notes</label>
+          <textarea id="f-notes"></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeOverlay('modal-add')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Catch</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── DETAIL MODAL ───────────────────────────────────────────── -->
+<div class="overlay" id="modal-detail">
+  <div class="modal">
+    <button class="modal-x" onclick="closeOverlay('modal-detail')">✕</button>
+    <div class="modal-title" id="detail-title"></div>
+    <div id="detail-photo"></div>
+    <div class="detail-grid" id="detail-body"></div>
+    <div class="form-actions" style="margin-top:1.25rem">
+      <button class="btn btn-secondary" onclick="editFromDetail()">✏ Edit</button>
+      <button class="btn btn-danger"    onclick="deleteFromDetail()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SPECIES DETAIL MODAL ───────────────────────────────────── -->
+<div class="overlay" id="modal-sp">
+  <div class="modal" style="max-width:500px">
+    <button class="modal-x" onclick="closeOverlay('modal-sp')">✕</button>
+    <div class="modal-title" id="sp-title"></div>
+    <div class="detail-grid" id="sp-body"></div>
+  </div>
+</div>
+
+<!-- ── ADD SPECIES MODAL ──────────────────────────────────────── -->
+<div class="overlay" id="modal-addsp">
+  <div class="modal" style="max-width:440px">
+    <button class="modal-x" onclick="closeOverlay('modal-addsp')">✕</button>
+    <div class="modal-title">Add Custom Species</div>
+    <p style="font-family:var(--mono);font-size:.68rem;color:var(--mist);line-height:1.7;margin-bottom:1.25rem">
+      Add a species that isn't on the master list. It will appear on your Life List and in the catch form dropdown.
+    </p>
+    <div class="frow" style="margin-bottom:1rem">
+      <label>Species Name *</label>
+      <input type="text" id="new-species-input" placeholder="e.g. Muskie, Alligator Gar…"
+             oninput="validateNewSpecies()" onkeydown="if(event.key==='Enter'){event.preventDefault();submitNewSpecies()}">
+      <div id="new-species-warn" style="font-family:var(--mono);font-size:.62rem;color:var(--coral);margin-top:4px;min-height:1em"></div>
+    </div>
+    <div id="custom-species-list" style="margin-bottom:1.25rem"></div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" onclick="closeOverlay('modal-addsp')">Done</button>
+      <button type="button" class="btn btn-primary" id="add-sp-btn" onclick="submitNewSpecies()">Add to List</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ── SCRIPT ─────────────────────────────────────────────────── -->
+<script>
+'use strict';
+
+/* ──────────────────────────────────────────────────────────────────
+   CONSTANTS
+────────────────────────────────────────────────────────────────── */
+const SPECIES_LIST = [
+  // Bass
+  'Largemouth Bass','Smallmouth Bass','Spotted Bass','Rock Bass','Guadalupe Bass',
+  'Striped Bass','Hybrid Striped Bass','White Bass','Yellow Bass',
+  // Sunfish & Crappie
+  'Bluegill','Pumpkinseed','Green Sunfish','Redear Sunfish','Long Eared Sunfish',
+  'Warmouth','Dollar Sunfish','Orangespotted Sunfish','Bantam Sunfish',
+  'Black Crappie','White Crappie',
+  // Pike & Pickerel family
+  'Northern Pike','Chain Pickerel','Grass Pickerel','Muskellunge','Tiger Muskie',
+  // Perch & Walleye
+  'Yellow Perch','White Perch','Walleye','Sauger','Saugeye',
+  // Trout & Salmon
+  'Brook Trout','Brown Trout','Rainbow Trout','Cutthroat Trout','Bull Trout',
+  'Lake Trout','Tiger Trout','Steelhead (Lake-run Rainbow)',
+  'Atlantic Salmon','Landlocked Atlantic Salmon',
+  'Chinook Salmon','Coho Salmon','Pink Salmon','Sockeye Salmon',
+  'Arctic Grayling','Lake Whitefish','Cisco (Lake Herring)',
+  // Catfish & Bullheads
+  'Channel Catfish','Blue Catfish','Flathead Catfish',
+  'Brown Bullhead','Yellow Bullhead','Black Bullhead','White Catfish',
+  // Carp & Buffalo
+  'Common Carp','Grass Carp','Mirror Carp',
+  'Bigmouth Buffalo','Smallmouth Buffalo','Black Buffalo',
+  // Suckers & Redhorse
+  'White Sucker','Longnose Sucker','Northern Hog Sucker',
+  'Shorthead Redhorse','Golden Redhorse','River Redhorse','Greater Redhorse',
+  'Quillback',
+  // Gar
+  'Longnose Gar','Shortnose Gar','Spotted Gar','Alligator Gar',
+  // Drum, Bowfin, Eel
+  'Freshwater Drum','Bowfin','American Eel',
+  // Shad
+  'American Shad','Hickory Shad','Gizzard Shad','Threadfin Shad',
+  // Sturgeon & Paddlefish
+  'Lake Sturgeon','Shovelnose Sturgeon','Paddlefish',
+  // Mooneye family
+  'Mooneye','Goldeye',
+  // Minnow family
+  'Fallfish','Creek Chub','Hornyhead Chub','Golden Shiner',
+  // Burbot & Misc
+  'Burbot','Blacknose Dace','Mudminnow',
+  'Other (specify in Notes)'
+];
+const LURE_TYPES = [
+  'Live Bait - Minnow','Live Bait - Worm','Live Bait - Leech','Live Bait - Other',
+  'Fly - Dry','Fly - Nymph','Fly - Streamer',
+  'Soft Plastic - Worm/Stickbait','Soft Plastic - Craw',
+  'Soft Plastic - Swimbait/Paddle Tail','Soft Plastic - Grub',
+  'Soft Plastic - Tube','Soft Plastic - Ned/Trd',
+  'Jig - Leadhead','Jig - Bass/Skirted','Jig - Hair (Marabou/Bucktail)',
+  'Crankbait - Shallow','Crankbait - Medium','Crankbait - Deep',
+  'Lipless Crankbait','Jerkbait (Hard)',
+  'Topwater - Popper','Topwater - Walking','Topwater - Frog',
+  'Buzzbait','Spinnerbait','Inline Spinner','Chatterbait/Bladed Jig',
+  'Underspin','Spoon','Blade Bait','Jigging Rap/Glide',
+  'A-Rig (Umbrella Rig)','Float/Bobber Rig','Powerbait','Other'
+];
+const METHODS    = ['Casting','Jigging','Trolling','Float/Drift','Fly Casting','Still Fishing','Ice Jigging'];
+const ACCESS     = ['Shore','Wading','Boat','Kayak','Ice'];
+const WB_TYPES   = ['Lake/Reservoir','River','Stream/Creek','Pond','Estuary/Brackish','Urban Creek','Other'];
+const KR_OPTS    = ['Released','Kept'];
+const ME_OPTS    = ['Estimated','Measured'];
+const MONTHS     = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CHART_COLORS = ['#21d3b6','#c8a23e','#6aabf7','#e05050','#a78bfa','#fb923c','#34d399','#f472b6','#fbbf24','#60a5fa'];
+
+/* ──────────────────────────────────────────────────────────────────
+   INDEXEDDB  — all catch data + base64 photos live here
+────────────────────────────────────────────────────────────────── */
+const DB_NAME    = 'fishdex';
+const DB_VERSION = 1;
+const STORE_NAME = 'catches';
+
+let _db = null;
+
+function openDB() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess  = e => { _db = e.target.result; resolve(_db); };
+    req.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function dbGetAll() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).getAll();
+    req.onsuccess = e => resolve(e.target.result || []);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function dbPut(record) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const req = tx.objectStore(STORE_NAME).put(record);
+    req.onsuccess = () => resolve();
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function dbDelete(id) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const req = tx.objectStore(STORE_NAME).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function getData() {
+  const rows = await dbGetAll();
+  // Sort newest-first by default for general use
+  return rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   STATE
+────────────────────────────────────────────────────────────────── */
+const state = {
+  currentView:    'view-dash',
+  sortCol:        'date',
+  sortDir:        -1,          // -1 = desc, +1 = asc
+  mapInstance:    null,
+  mapLayer:       null,
+  chartInstances: {},
+  slideData:      [],          // array of catch objects with photos
+  slideIndex:     0,
+  slideTimer:     null,
+  detailId:       null,        // id of currently open detail modal
+};
+
+/* ──────────────────────────────────────────────────────────────────
+   HELPERS
+────────────────────────────────────────────────────────────────── */
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  try {
+    return new Date(d + 'T12:00:00').toLocaleDateString('en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return d; }
+}
+
+function fmtLen(r)  { return r.length_in   ? r.length_in + '"' : '—'; }
+function fmtWt(r)   {
+  const lb = r.weight_lb, oz = r.weight_oz;
+  if (!lb && !oz) return '—';
+  return [lb && (lb + 'lb'), oz && (oz + 'oz')].filter(Boolean).join(' ');
+}
+
+function numOrNull(v) {
+  const n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+function toast(msg, ms = 2800) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function emptyHTML(icon, title, body) {
+  return `<div class="empty"><div class="empty-icon">${icon}</div>
+    <h3>${title}</h3><p>${body}</p></div>`;
+}
+
+function makeOptions(arr, blank = '—') {
+  return `<option value="">${blank}</option>` +
+    arr.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   NAVIGATION
+────────────────────────────────────────────────────────────────── */
+function nav(viewId) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(viewId).classList.add('active');
+  const btn = document.querySelector(`#main-nav button[data-view="${viewId}"]`);
+  if (btn) btn.classList.add('active');
+  state.currentView = viewId;
+
+  if      (viewId === 'view-dash')     renderDashboard();
+  else if (viewId === 'view-lifelist') renderLifeList();
+  else if (viewId === 'view-log')      renderLog();
+  else if (viewId === 'view-gallery')  renderGallery();
+  else if (viewId === 'view-map')      renderMap();
+  else if (viewId === 'view-stats')    renderStats();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   DASHBOARD
+────────────────────────────────────────────────────────────────── */
+async function renderDashboard() {
+  const data = await getData();
+  const totalFish  = data.reduce((s, r) => s + (r.quantity || 1), 0);
+  const caughtSp   = new Set(data.map(r => r.species).filter(Boolean));
+  const days       = new Set(data.map(r => r.date).filter(Boolean));
+  const locs       = new Set(data.map(r => r.where).filter(Boolean));
+
+  document.getElementById('dash-stats').innerHTML = [
+    ['Total Fish',      totalFish,       `across ${data.length} log entries`],
+    ['Species Caught',  caughtSp.size,   `of ${SPECIES_LIST.length} on life list`],
+    ['Fishing Days',    days.size,       'unique dates logged'],
+    ['Locations',       locs.size,       'unique spots visited'],
+  ].map(([l,v,s]) => `
+    <div class="stat fade-up">
+      <div class="stat-label">${l}</div>
+      <div class="stat-val">${v}</div>
+      <div class="stat-sub">${s}</div>
+    </div>`).join('');
+
+  // PBs — best length per species
+  const pbMap = {};
+  data.forEach(r => {
+    const sp = r.species; if (!sp) return;
+    const ln = r.length_in || 0;
+    if (!pbMap[sp] || ln > pbMap[sp].ln) pbMap[sp] = { ln, wt: r.weight_lb, date: r.date };
+  });
+  const pbList = Object.entries(pbMap)
+    .filter(([, v]) => v.ln > 0)
+    .sort((a, b) => b[1].ln - a[1].ln)
+    .slice(0, 8);
+
+  const pbEl = document.getElementById('dash-pbs');
+  if (!pbList.length) {
+    pbEl.innerHTML = emptyHTML('🏆','No records yet','Start logging catches to track personal bests.');
+  } else {
+    pbEl.innerHTML = pbList.map(([sp, v]) => `
+      <div class="row-item" onclick="openSpeciesDetail('${escHtml(sp)}')">
+        <div>
+          <div class="row-species">${escHtml(sp)}</div>
+          <div class="row-meta">${fmtDate(v.date)}</div>
+        </div>
+        <div class="row-size">${v.ln}"${v.wt ? ' · ' + v.wt + 'lb' : ''}</div>
+      </div>`).join('');
+  }
+
+  // Recent
+  const recentEl = document.getElementById('dash-recent');
+  const recent   = data.slice(0, 7);
+  if (!recent.length) {
+    recentEl.innerHTML = emptyHTML('🎣','No catches yet','Hit "+ Log Catch" to add your first fish.');
+  } else {
+    recentEl.innerHTML = recent.map(r => `
+      <div class="row-item" onclick="openDetailModal('${r.id}')">
+        <div>
+          <div class="row-species">${escHtml(r.species || 'Unknown')}</div>
+          <div class="row-meta">${fmtDate(r.date)} · ${escHtml(r.where || '—')}</div>
+        </div>
+        <div class="row-size">${fmtLen(r)}</div>
+      </div>`).join('');
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   CUSTOM SPECIES  (stored in localStorage — just an array of names)
+────────────────────────────────────────────────────────────────── */
+const CUSTOM_SP_KEY = 'fishdex_custom_species';
+
+function getCustomSpecies() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_SP_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveCustomSpecies(arr) {
+  localStorage.setItem(CUSTOM_SP_KEY, JSON.stringify(arr));
+}
+
+function getAllSpecies() {
+  // Master list + custom additions, deduplicated, alpha-sorted within custom block
+  const custom = getCustomSpecies();
+  return [...new Set([...SPECIES_LIST, ...custom])];
+}
+
+function openAddSpeciesModal() {
+  document.getElementById('new-species-input').value = '';
+  document.getElementById('new-species-warn').textContent  = '';
+  renderCustomSpeciesList();
+  openOverlay('modal-addsp');
+  setTimeout(() => document.getElementById('new-species-input').focus(), 80);
+}
+
+function renderCustomSpeciesList() {
+  const custom = getCustomSpecies();
+  const el = document.getElementById('custom-species-list');
+  if (!custom.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div style="font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);margin-bottom:.5rem">Your custom species</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+      ${custom.map(sp => `
+        <div style="display:flex;align-items:center;gap:4px;background:rgba(33,211,182,.08);border:1px solid rgba(33,211,182,.2);border-radius:20px;padding:3px 10px">
+          <span style="font-family:var(--mono);font-size:.68rem;color:var(--teal)">${escHtml(sp)}</span>
+          <button onclick="removeCustomSpecies('${escHtml(sp)}')"
+            style="background:none;border:none;color:var(--mist);font-size:.7rem;padding:0 2px;cursor:pointer;line-height:1;transition:color .15s"
+            onmouseover="this.style.color='var(--coral)'" onmouseout="this.style.color='var(--mist)'"
+            title="Remove">✕</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+function validateNewSpecies() {
+  const val  = document.getElementById('new-species-input').value.trim();
+  const warn = document.getElementById('new-species-warn');
+  const btn  = document.getElementById('add-sp-btn');
+  if (!val) { warn.textContent = ''; btn.disabled = false; return true; }
+  const all = getAllSpecies().map(s => s.toLowerCase());
+  if (all.includes(val.toLowerCase())) {
+    warn.textContent = 'Already on the list.';
+    btn.disabled = true;
+    return false;
+  }
+  warn.textContent = '';
+  btn.disabled = false;
+  return true;
+}
+
+function submitNewSpecies() {
+  const input = document.getElementById('new-species-input');
+  const val   = input.value.trim();
+  if (!val || !validateNewSpecies()) return;
+  const custom = getCustomSpecies();
+  custom.push(val);
+  saveCustomSpecies(custom);
+  input.value = '';
+  document.getElementById('new-species-warn').textContent = '';
+  renderCustomSpeciesList();
+  renderLifeList();
+  toast(`✓ "${val}" added to Life List`);
+}
+
+function removeCustomSpecies(sp) {
+  if (!confirm(`Remove "${sp}" from your custom list?`)) return;
+  const custom = getCustomSpecies().filter(s => s !== sp);
+  saveCustomSpecies(custom);
+  renderCustomSpeciesList();
+  renderLifeList();
+  toast(`Removed "${sp}"`);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   LIFE LIST
+────────────────────────────────────────────────────────────────── */
+async function renderLifeList() {
+  const data  = await getData();
+  const q     = (document.getElementById('ll-search')?.value || '').toLowerCase();
+  const coOnly = document.getElementById('ll-caught-only')?.checked;
+
+  const caughtMap = {};
+  data.forEach(r => {
+    const sp = r.species; if (!sp) return;
+    caughtMap[sp] = (caughtMap[sp] || 0) + (r.quantity || 1);
+  });
+
+  // Master list + custom additions + any species logged but not on either list
+  const allSp = [...new Set([...getAllSpecies(), ...Object.keys(caughtMap)])];
+  const caught = Object.keys(caughtMap).filter(sp => allSp.includes(sp)).length;
+  const total  = allSp.length;
+  const pct    = total ? Math.round(caught / total * 100) : 0;
+
+  document.getElementById('prog-fill').style.width  = pct + '%';
+  document.getElementById('prog-label').textContent = `${caught} / ${total} species (${pct}%)`;
+
+  const filtered = allSp.filter(sp => {
+    if (q && !sp.toLowerCase().includes(q)) return false;
+    if (coOnly && !caughtMap[sp])          return false;
+    return true;
+  });
+
+  const grid = document.getElementById('species-grid');
+  if (!filtered.length) {
+    grid.innerHTML = emptyHTML('🔍','No matches','Try a different search term.');
+    return;
+  }
+  grid.innerHTML = filtered.map(sp => {
+    const cnt = caughtMap[sp] || 0;
+    return `<div class="sp-card ${cnt ? 'caught' : ''}" onclick="openSpeciesDetail('${escHtml(sp)}')">
+      <div class="sp-name">${escHtml(sp)}</div>
+      <div class="sp-count">${cnt ? cnt + ' caught' : 'Not yet caught'}</div>
+    </div>`;
+  }).join('');
+}
+
+async function openSpeciesDetail(sp) {
+  const data    = await getData();
+  const catches = data.filter(r => r.species === sp);
+  document.getElementById('sp-title').textContent = sp;
+  if (!catches.length) {
+    document.getElementById('sp-body').innerHTML =
+      `<div style="grid-column:1/-1;font-family:var(--mono);font-size:.75rem;color:var(--mist);padding:.5rem 0">
+        Not yet caught — go get it! 🎯</div>`;
+  } else {
+    const best  = catches.reduce((b, r) => (!b || (r.length_in||0) > (b.length_in||0)) ? r : b, null);
+    const total = catches.reduce((s, r) => s + (r.quantity||1), 0);
+    const lures = [...new Set(catches.map(r => r.lure_type).filter(Boolean))].join(', ');
+    const locs  = [...new Set(catches.map(r => r.where).filter(Boolean))].join(', ');
+    const first = [...catches].sort((a,b) => (a.date||'').localeCompare(b.date||''))[0];
+    document.getElementById('sp-body').innerHTML = [
+      ['Total Caught',   total],
+      ['Sessions',       catches.length],
+      ['Personal Best',  best ? fmtLen(best) + (best.weight_lb ? ' · ' + best.weight_lb + 'lb' : '') : '—'],
+      ['First Caught',   fmtDate(first?.date)],
+      ['Locations',      locs || '—', true],
+      ['Lures That Worked', lures || '—', true],
+    ].map(([k,v,full]) =>
+      `<div class="frow${full?' full':''}" style="margin:0">
+        <div class="dk">${k}</div><div class="dv" style="font-size:.9rem">${escHtml(String(v))}</div>
+      </div>`).join('');
+  }
+  openOverlay('modal-sp');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   LOG
+────────────────────────────────────────────────────────────────── */
+async function refreshLogFilters() {
+  const data     = await getData();
+  const species  = [...new Set(data.map(r => r.species).filter(Boolean))].sort();
+  const wheres   = [...new Set(data.map(r => r.where).filter(Boolean))].sort();
+  const states   = [...new Set(data.map(r => r.state).filter(Boolean))].sort();
+
+  const fill = (id, arr) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    el.innerHTML = `<option value="">All</option>` +
+      arr.map(v => `<option value="${escHtml(v)}"${cur===v?' selected':''}>${escHtml(v)}</option>`).join('');
+  };
+  fill('f-species', species);
+  fill('f-where',   wheres);
+  fill('f-state',   states);
+  // gallery + map too
+  fill('g-species', species);
+  fill('g-where',   wheres);
+  fill('map-species', species);
+  fill('map-where',   wheres);
+}
+
+async function renderLog() {
+  await refreshLogFilters();
+  const data = await getData();
+
+  const q   = (document.getElementById('log-search')?.value || '').toLowerCase();
+  const fSp = document.getElementById('f-species')?.value || '';
+  const fWh = document.getElementById('f-where')?.value   || '';
+  const fSt = document.getElementById('f-state')?.value   || '';
+  const fKR = document.getElementById('f-kr')?.value      || '';
+
+  let rows = data.filter(r => {
+    if (fSp && r.species !== fSp)         return false;
+    if (fWh && r.where   !== fWh)         return false;
+    if (fSt && r.state   !== fSt)         return false;
+    if (fKR && r.kept_released !== fKR)   return false;
+    if (q) {
+      const hay = [r.species, r.where, r.notes, r.lure_type, r.lure_name, r.lure_color, r.method, r.state]
+        .join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  const col = state.sortCol, dir = state.sortDir;
+  rows.sort((a, b) => {
+    let av, bv;
+    if (col === 'date')    { av = a.date    || ''; bv = b.date    || ''; }
+    else if (col==='species'){ av = a.species || ''; bv = b.species || ''; }
+    else if (col==='length') { av = a.length_in   || 0;  bv = b.length_in   || 0; }
+    else if (col==='weight') { av = a.weight_lb   || 0;  bv = b.weight_lb   || 0; }
+    else if (col==='where')  { av = a.where  || ''; bv = b.where  || ''; }
+    else if (col==='state')  { av = a.state  || ''; bv = b.state  || ''; }
+    else                     { av = ''; bv = ''; }
+    if (typeof av === 'number') return (av - bv) * dir;
+    return av.localeCompare(bv) * dir;
+  });
+
+  // Update header indicators
+  document.querySelectorAll('thead th[data-sort]').forEach(th => {
+    th.classList.remove('asc','desc');
+    if (th.dataset.sort === col) {
+      th.classList.add(dir === 1 ? 'asc' : 'desc');
+    }
+  });
+
+  const tbody = document.getElementById('log-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr class="no-res"><td colspan="14">${data.length ? 'No catches match your filters.' : 'No catches logged yet. Hit "+ Log Catch" to start!'}</td></tr>`;
+    document.getElementById('log-footer').textContent = '';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const krTag   = r.kept_released === 'Kept'     ? '<span class="tag tag-k">Kept</span>'
+                  : r.kept_released === 'Released'  ? '<span class="tag tag-r">Released</span>' : '—';
+    const meTag   = r.measured      === 'Measured'  ? '<span class="tag tag-m">M</span>'
+                  : r.measured      === 'Estimated' ? '<span class="tag tag-e">E</span>' : '—';
+    const photoEl = r.photo
+      ? `<span class="tag tag-photo" onclick="event.stopPropagation();viewPhoto('${r.id}')">📷 View</span>`
+      : '—';
+    return `<tr onclick="openDetailModal('${r.id}')" style="cursor:pointer" title="Click for details">
+      <td>${fmtDate(r.date)}</td>
+      <td class="cell-species">${escHtml(r.species || '—')}</td>
+      <td class="cell-len">${fmtLen(r)}</td>
+      <td>${fmtWt(r)}</td>
+      <td>${escHtml(r.where || '—')}</td>
+      <td>${escHtml(r.state || '—')}</td>
+      <td>${escHtml(r.wb_type || '—')}</td>
+      <td>${escHtml(r.method || '—')}</td>
+      <td class="cell-lure">${escHtml(r.lure_type || '—')}</td>
+      <td>${meTag}</td>
+      <td>${krTag}</td>
+      <td>${photoEl}</td>
+      <td class="cell-note">${escHtml(r.notes || '')}</td>
+      <td><button class="del-btn" onclick="event.stopPropagation();confirmDelete('${r.id}')" title="Delete">✕</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('log-footer').textContent =
+    `Showing ${rows.length} of ${data.length} entries`;
+}
+
+function sortBy(col) {
+  if (state.sortCol === col) state.sortDir *= -1;
+  else { state.sortCol = col; state.sortDir = -1; }
+  renderLog();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   GALLERY + SLIDESHOW
+────────────────────────────────────────────────────────────────── */
+async function renderGallery() {
+  await refreshLogFilters();
+  const data   = await getData();
+  const fSp    = document.getElementById('g-species')?.value || '';
+  const fWh    = document.getElementById('g-where')?.value   || '';
+
+  let rows = data.filter(r => {
+    if (fSp && r.species !== fSp) return false;
+    if (fWh && r.where   !== fWh) return false;
+    return true;
+  });
+
+  const withPhoto = rows.filter(r => r.photo);
+
+  // Slideshow launch bar
+  const barWrap = document.getElementById('ss-bar-wrap');
+  if (withPhoto.length > 0) {
+    barWrap.innerHTML = `
+      <div class="ss-bar">
+        <div class="ss-label">
+          <em>${withPhoto.length}</em> photo${withPhoto.length !== 1 ? 's' : ''} in your FishDex
+          — view them all in slideshow mode
+        </div>
+        <button class="btn btn-primary" onclick="openSlideshow()">▶ Slideshow</button>
+      </div>`;
+  } else {
+    barWrap.innerHTML = '';
+  }
+
+  const grid = document.getElementById('gallery-grid');
+  if (!rows.length) {
+    grid.innerHTML = emptyHTML('📷','No catches yet','Log some catches and add photos to fill your gallery.');
+    return;
+  }
+
+  grid.innerHTML = rows.map(r => {
+    const imgHtml = r.photo
+      ? `<img class="gallery-thumb" src="${r.photo}" alt="${escHtml(r.species)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+        + `<div class="gallery-thumb-placeholder" style="display:none">🐟</div>`
+      : `<div class="gallery-thumb-placeholder">🐟</div>`;
+    return `<div class="gallery-card" onclick="openDetailModal('${r.id}')">
+      ${imgHtml}
+      <div class="gallery-info">
+        <div class="gallery-species">${escHtml(r.species || 'Unknown')}</div>
+        <div class="gallery-meta">${fmtDate(r.date)} · ${escHtml(r.where || '—')}</div>
+        <div class="gallery-size">${fmtLen(r)}${r.weight_lb ? ' · ' + r.weight_lb + 'lb' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function openSlideshow(startId) {
+  const data      = await getData();
+  state.slideData = data.filter(r => r.photo);
+  if (!state.slideData.length) { toast('No photos to show yet!'); return; }
+  state.slideIndex = startId
+    ? Math.max(0, state.slideData.findIndex(r => r.id === startId))
+    : 0;
+  buildSlideDots();
+  renderSlide();
+  document.getElementById('slideshow').classList.add('open');
+}
+
+function buildSlideDots() {
+  const dots = document.getElementById('ss-dots');
+  const max  = Math.min(state.slideData.length, 20); // cap dots at 20
+  if (state.slideData.length > 1 && state.slideData.length <= 20) {
+    dots.innerHTML = state.slideData
+      .map((_, i) => `<button class="ss-dot" onclick="ssGoto(${i})"></button>`)
+      .join('');
+  } else {
+    dots.innerHTML = '';
+  }
+}
+
+function renderSlide() {
+  const r   = state.slideData[state.slideIndex];
+  const img = document.getElementById('ss-img');
+  const ph  = document.getElementById('ss-placeholder');
+  if (r.photo) {
+    img.src       = r.photo;
+    img.style.display = 'block';
+    ph.style.display  = 'none';
+  } else {
+    img.style.display = 'none';
+    ph.textContent    = '🐟';
+    ph.style.display  = 'flex';
+  }
+  document.getElementById('ss-species').textContent = r.species || 'Unknown';
+  document.getElementById('ss-details').innerHTML = [
+    fmtDate(r.date),
+    r.where,
+    fmtLen(r) !== '—' && fmtLen(r),
+    fmtWt(r)  !== '—' && fmtWt(r),
+    r.kept_released,
+    r.notes,
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+  document.getElementById('ss-counter').textContent =
+    `${state.slideIndex + 1} / ${state.slideData.length}`;
+
+  // dots
+  document.querySelectorAll('.ss-dot').forEach((d, i) =>
+    d.classList.toggle('active', i === state.slideIndex));
+}
+
+function ssNav(dir) {
+  const len = state.slideData.length;
+  if (!len) return;
+  state.slideIndex = (state.slideIndex + dir + len) % len;
+  renderSlide();
+}
+
+function ssGoto(i) {
+  state.slideIndex = i;
+  renderSlide();
+}
+
+function closeSlideshow() {
+  document.getElementById('slideshow').classList.remove('open');
+  stopAutoplay();
+}
+
+function toggleAutoplay() {
+  if (state.slideTimer) {
+    stopAutoplay();
+  } else {
+    document.getElementById('ss-play-btn').textContent = '⏸ Pause';
+    state.slideTimer = setInterval(() => ssNav(+1), 4000);
+  }
+}
+function stopAutoplay() {
+  clearInterval(state.slideTimer);
+  state.slideTimer = null;
+  document.getElementById('ss-play-btn').textContent = '▶ Auto';
+}
+
+async function viewPhoto(id) {
+  const data = await getData();
+  const r    = data.find(c => c.id === id);
+  if (!r) return;
+  state.slideData  = [r];
+  state.slideIndex = 0;
+  buildSlideDots();
+  renderSlide();
+  document.getElementById('slideshow').classList.add('open');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   MAP
+────────────────────────────────────────────────────────────────── */
+async function renderMap() {
+  if (!state.mapInstance) {
+    state.mapInstance = L.map('leaflet-map', { zoomControl: true })
+      .setView([39.5, -90], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains:'abcd', maxZoom:19
+    }).addTo(state.mapInstance);
+    state.mapLayer = L.layerGroup().addTo(state.mapInstance);
+  }
+  // Invalidate size after DOM becomes visible
+  setTimeout(() => state.mapInstance.invalidateSize(), 50);
+  await updateMapMarkers();
+}
+
+async function updateMapMarkers() {
+  if (!state.mapInstance) return;
+  state.mapLayer.clearLayers();
+
+  const data  = await getData();
+  const fSp   = document.getElementById('map-species')?.value || '';
+  const fWh   = document.getElementById('map-where')?.value   || '';
+
+  // Group by lat/lon
+  const groups = {};
+  data.forEach(r => {
+    if (fSp && r.species !== fSp) return;
+    if (fWh && r.where   !== fWh) return;
+    const lat = numOrNull(r.lat), lon = numOrNull(r.lon);
+    if (!lat || !lon) return;
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (!groups[key]) groups[key] = { lat, lon, name: r.where || 'Unknown', catches: [] };
+    groups[key].catches.push(r);
+  });
+
+  const pts = [];
+  Object.values(groups).forEach(grp => {
+    const total  = grp.catches.reduce((s, r) => s + (r.quantity || 1), 0);
+    const hasKept = grp.catches.some(r => r.kept_released === 'Kept');
+    const color  = hasKept ? '#c8a23e' : '#21d3b6';
+    const size   = 14 + Math.min(total * 2, 22);
+
+    const icon = L.divIcon({
+      html:`<div style="background:${color};border:2px solid rgba(255,255,255,.25);width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:500;color:#06101d;box-shadow:0 2px 10px rgba(0,0,0,.6)">${total}</div>`,
+      className:'', iconAnchor:[size/2,size/2]
+    });
+
+    const spRows = [...new Set(grp.catches.map(r=>r.species).filter(Boolean))].map(sp => {
+      const cnt = grp.catches.filter(r=>r.species===sp).reduce((s,r)=>s+(r.quantity||1),0);
+      const pb  = grp.catches.filter(r=>r.species===sp).reduce((b,r)=>(!b||(r.length_in||0)>(b.length_in||0))?r:b,null);
+      return `<div style="padding:4px 0;border-bottom:1px solid #1c3b60">
+        <b style="color:#e8f4ff">${escHtml(sp)}</b>
+        <span style="color:#4a6f94;font-size:.7em"> ×${cnt}</span>
+        ${pb && pb.length_in ? `<br><span style="color:#21d3b6;font-size:.68em">Best: ${pb.length_in}"</span>`:''}</div>`;
+    }).join('');
+
+    const popup = L.popup({ maxWidth:260 }).setContent(
+      `<div style="font-family:'IBM Plex Mono',monospace;font-size:.73rem;color:#c8ddf0">
+        <div style="font-family:'Playfair Display',serif;font-size:.95rem;color:#c8a23e;margin-bottom:6px;font-weight:700">${escHtml(grp.name)}</div>
+        <div style="color:#4a6f94;font-size:.65rem;margin-bottom:6px">${grp.catches.length} entries · ${total} fish</div>
+        ${spRows}</div>`
+    );
+    L.marker([grp.lat, grp.lon], { icon })
+      .addTo(state.mapLayer)
+      .bindPopup(popup);
+    pts.push([grp.lat, grp.lon]);
+  });
+
+  if (pts.length === 1) {
+    state.mapInstance.setView(pts[0], 12);
+  } else if (pts.length > 1) {
+    state.mapInstance.fitBounds(L.latLngBounds(pts), { padding:[40,40] });
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   STATS
+────────────────────────────────────────────────────────────────── */
+function destroyCharts() {
+  Object.values(state.chartInstances).forEach(c => { try { c.destroy(); } catch(_){} });
+  state.chartInstances = {};
+}
+
+const CHART_OPTS = (axis = 'x') => ({
+  responsive:true, maintainAspectRatio:true,
+  plugins:{legend:{display:false}},
+  scales:{
+    [axis]:{ticks:{color:'#4a6f94',font:{family:"'IBM Plex Mono'"}},grid:{color:'#1c3b60'}},
+    [axis==='x'?'y':'x']:{ticks:{color:'#c8ddf0',font:{family:"'IBM Plex Mono'",size:10}},grid:{display:false}}
+  }
+});
+
+async function renderStats() {
+  destroyCharts();
+  const data = await getData();
+
+  // Species
+  const spCnt = {};
+  data.forEach(r => { const s=r.species;if(s) spCnt[s]=(spCnt[s]||0)+(r.quantity||1); });
+  const spArr = Object.entries(spCnt).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  state.chartInstances.sp = new Chart(document.getElementById('ch-species'),{
+    type:'bar',
+    data:{labels:spArr.map(x=>x[0]),datasets:[{data:spArr.map(x=>x[1]),backgroundColor:CHART_COLORS,borderRadius:4,borderSkipped:false}]},
+    options:{...CHART_OPTS('y'), indexAxis:'y'}
+  });
+
+  // Month
+  const mCnt = new Array(12).fill(0);
+  data.forEach(r=>{if(r.date){const m=new Date(r.date+'T12:00:00').getMonth();mCnt[m]+=(r.quantity||1);}});
+  state.chartInstances.mo = new Chart(document.getElementById('ch-month'),{
+    type:'bar',
+    data:{labels:MONTHS,datasets:[{data:mCnt,backgroundColor:mCnt.map(v=>v>0?'#c8a23e':'#1c3b60'),borderRadius:4,borderSkipped:false}]},
+    options:CHART_OPTS('x')
+  });
+
+  // Location
+  const lCnt = {};
+  data.forEach(r=>{const l=r.where;if(l) lCnt[l]=(lCnt[l]||0)+(r.quantity||1);});
+  const lArr = Object.entries(lCnt).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  state.chartInstances.loc = new Chart(document.getElementById('ch-loc'),{
+    type:'doughnut',
+    data:{labels:lArr.map(x=>x[0]),datasets:[{data:lArr.map(x=>x[1]),backgroundColor:CHART_COLORS,borderColor:'#06101d',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:true,cutout:'60%',
+      plugins:{legend:{position:'right',labels:{color:'#4a6f94',font:{family:"'IBM Plex Mono'",size:10},boxWidth:10}}}}
+  });
+
+  // Lure
+  const luCnt = {};
+  data.forEach(r=>{const l=r.lure_type;if(l) luCnt[l]=(luCnt[l]||0)+1;});
+  const luArr = Object.entries(luCnt).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  state.chartInstances.lu = new Chart(document.getElementById('ch-lure'),{
+    type:'bar',
+    data:{labels:luArr.map(x=>x[0]),datasets:[{data:luArr.map(x=>x[1]),backgroundColor:'#6aabf7',borderRadius:4,borderSkipped:false}]},
+    options:{...CHART_OPTS('y'), indexAxis:'y'}
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   ADD / EDIT MODAL
+────────────────────────────────────────────────────────────────── */
+function populateFormSelects() {
+  const sel = (id, arr, blank='—') => {
+    document.getElementById(id).innerHTML = makeOptions(arr, blank);
+  };
+  sel('f-sp',      getAllSpecies(), 'Select species…');
+  sel('f-wb',      WB_TYPES);
+  sel('f-lure',    LURE_TYPES);
+  sel('f-method',  METHODS);
+  sel('f-access',  ACCESS);
+  sel('f-me',      ME_OPTS);
+  sel('f-kr-in',   KR_OPTS);
+}
+
+function openAddModal(prefillId) {
+  populateFormSelects();
+  document.getElementById('edit-id').value      = prefillId || '';
+  document.getElementById('modal-add-title').textContent = prefillId ? 'Edit Catch' : 'Log a New Catch';
+  document.getElementById('add-form').reset();
+  document.getElementById('f-date').value         = new Date().toISOString().slice(0,10);
+  document.getElementById('f-qty').value           = '1';
+  document.getElementById('photo-preview').classList.remove('show');
+  document.getElementById('photo-preview').src     = '';
+  document.getElementById('f-photo-url').value     = '';
+  document.getElementById('f-photo-file').value    = '';
+  switchPhotoTab('url');
+  openOverlay('modal-add');
+}
+
+let _editPhotoData = null; // holds base64 when editing
+
+async function editFromDetail() {
+  const id = state.detailId; if (!id) return;
+  const data = await getData();
+  const r    = data.find(c => c.id === id);
+  if (!r) return;
+  closeOverlay('modal-detail');
+  populateFormSelects();
+  document.getElementById('edit-id').value              = id;
+  document.getElementById('modal-add-title').textContent = 'Edit Catch';
+
+  // Fill all fields
+  const set = (elId, val) => { const el=document.getElementById(elId); if(el && val!=null) el.value=val; };
+  set('f-date',       r.date);
+  set('f-sp',         r.species);
+  set('f-where-in',   r.where);
+  set('f-wb',         r.wb_type);
+  set('f-county',     r.county);
+  set('f-state-in',   r.state);
+  set('f-lat',        r.lat);
+  set('f-lon',        r.lon);
+  set('f-qty',        r.quantity);
+  set('f-len',        r.length_in);
+  set('f-wlb',        r.weight_lb);
+  set('f-woz',        r.weight_oz);
+  set('f-me',         r.measured);
+  set('f-access',     r.access);
+  set('f-lure',       r.lure_type);
+  set('f-lurename',   r.lure_name);
+  set('f-lurecolor',  r.lure_color);
+  set('f-luresize',   r.lure_size);
+  set('f-method',     r.method);
+  set('f-depth',      r.depth_ft);
+  set('f-kr-in',      r.kept_released);
+  set('f-notes',      r.notes);
+
+  // Photo
+  _editPhotoData = r.photo || null;
+  if (r.photo) {
+    if (r.photo.startsWith('http')) {
+      switchPhotoTab('url');
+      document.getElementById('f-photo-url').value = r.photo;
+      previewPhotoUrl(r.photo);
+    } else {
+      switchPhotoTab('file');
+      const prev = document.getElementById('photo-preview');
+      prev.src = r.photo;
+      prev.classList.add('show');
+    }
+  } else {
+    switchPhotoTab('url');
+    document.getElementById('photo-preview').classList.remove('show');
+  }
+  openOverlay('modal-add');
+}
+
+async function submitCatch(e) {
+  e.preventDefault();
+  const id  = document.getElementById('edit-id').value || uuid();
+  const get = elId => { const el=document.getElementById(elId); return el ? el.value.trim()||null : null; };
+
+  // Photo: file upload takes priority if file tab is active
+  let photo = _editPhotoData;
+  const activeTab = document.getElementById('tab-file').classList.contains('active') ? 'file' : 'url';
+  if (activeTab === 'url') {
+    photo = get('f-photo-url') || null;
+  } else {
+    // Base64 was stored in preview src if file was chosen
+    const prev = document.getElementById('photo-preview');
+    if (prev.classList.contains('show') && prev.src && !prev.src.endsWith('#')) {
+      photo = prev.src;
+    }
+  }
+  _editPhotoData = null;
+
+  const record = {
+    id,
+    date:          get('f-date'),
+    species:       get('f-sp'),
+    where:         get('f-where-in'),
+    wb_type:       get('f-wb'),
+    county:        get('f-county'),
+    state:         get('f-state-in'),
+    lat:           numOrNull(get('f-lat')),
+    lon:           numOrNull(get('f-lon')),
+    quantity:      numOrNull(get('f-qty')) || 1,
+    length_in:     numOrNull(get('f-len')),
+    weight_lb:     numOrNull(get('f-wlb')),
+    weight_oz:     numOrNull(get('f-woz')),
+    measured:      get('f-me'),
+    access:        get('f-access'),
+    lure_type:     get('f-lure'),
+    lure_name:     get('f-lurename'),
+    lure_color:    get('f-lurecolor'),
+    lure_size:     get('f-luresize'),
+    method:        get('f-method'),
+    depth_ft:      numOrNull(get('f-depth')),
+    kept_released: get('f-kr-in'),
+    notes:         get('f-notes'),
+    photo,
+  };
+
+  await dbPut(record);
+  closeOverlay('modal-add');
+  toast(`🎣 ${record.species || 'Catch'} logged!`);
+  refreshCurrentView();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   PHOTO HELPERS
+────────────────────────────────────────────────────────────────── */
+function switchPhotoTab(tab) {
+  ['url','file'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+function previewPhotoUrl(url) {
+  const prev = document.getElementById('photo-preview');
+  if (url && (url.startsWith('http') || url.startsWith('blob'))) {
+    prev.src = url;
+    prev.classList.add('show');
+  } else {
+    prev.classList.remove('show');
+    prev.src = '';
+  }
+}
+
+function previewPhotoFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('photo-preview');
+    prev.src = e.target.result;
+    prev.classList.add('show');
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   DETAIL MODAL
+────────────────────────────────────────────────────────────────── */
+async function openDetailModal(id) {
+  const data = await getData();
+  const r    = data.find(c => c.id === id);
+  if (!r) return;
+  state.detailId = id;
+
+  document.getElementById('detail-title').innerHTML =
+    `<span style="color:var(--teal)">${escHtml(r.species||'Unknown')}</span>
+     &nbsp;·&nbsp;
+     <span style="font-size:.85em;font-weight:400;color:var(--mist)">${fmtDate(r.date)}</span>`;
+
+  const photoDiv = document.getElementById('detail-photo');
+  if (r.photo) {
+    photoDiv.innerHTML = `<div class="detail-photo">
+      <img src="${r.photo}" alt="${escHtml(r.species)}"
+           onerror="this.parentElement.innerHTML='<div style=\\'padding:.5rem;color:var(--mist);font-size:.75rem;font-family:var(--mono)\\'>Photo could not load.</div>'">
+    </div>`;
+  } else {
+    photoDiv.innerHTML = '';
+  }
+
+  const fields = [
+    ['Location', r.where],
+    ['State / County', [r.state, r.county].filter(Boolean).join(', ')],
+    ['Waterbody', r.wb_type],
+    ['Length', fmtLen(r)!=='—'?fmtLen(r):null],
+    ['Weight', fmtWt(r)!=='—'?fmtWt(r):null],
+    ['Measured?', r.measured],
+    ['Quantity', r.quantity !== 1 ? r.quantity : null],
+    ['Kept / Released', r.kept_released],
+    ['Access', r.access],
+    ['Method', r.method],
+    ['Lure Type', r.lure_type],
+    ['Lure',   [r.lure_name,r.lure_color,r.lure_size].filter(Boolean).join(' · ')],
+    ['Depth', r.depth_ft != null ? r.depth_ft + ' ft' : null],
+    ['Coordinates', r.lat && r.lon ? `${r.lat}, ${r.lon}` : null],
+    ['Notes', r.notes, true],
+  ].filter(([,v]) => v);
+
+  document.getElementById('detail-body').innerHTML =
+    fields.map(([k,v,full]) =>
+      `<div${full?' style="grid-column:1/-1"':''}>
+        <div class="dk">${k}</div>
+        <div class="dv">${escHtml(String(v))}</div>
+      </div>`
+    ).join('');
+
+  openOverlay('modal-detail');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   DELETE
+────────────────────────────────────────────────────────────────── */
+async function confirmDelete(id) {
+  if (!confirm('Delete this catch? This cannot be undone.')) return;
+  await dbDelete(id);
+  toast('Entry deleted.');
+  refreshCurrentView();
+}
+
+async function deleteFromDetail() {
+  const id = state.detailId; if (!id) return;
+  if (!confirm('Delete this catch? This cannot be undone.')) return;
+  await dbDelete(id);
+  closeOverlay('modal-detail');
+  toast('Entry deleted.');
+  refreshCurrentView();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   MODAL HELPERS
+────────────────────────────────────────────────────────────────── */
+function openOverlay(id)  { document.getElementById(id).classList.add('open'); }
+function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ──────────────────────────────────────────────────────────────────
+   IMPORT / EXPORT
+────────────────────────────────────────────────────────────────── */
+async function exportData() {
+  const data = await getData();
+  // Strip base64 photos for export to keep file small; keep URL photos
+  const exportable = data.map(r => {
+    if (r.photo && r.photo.startsWith('data:')) {
+      return {...r, photo_note:'[base64 photo not exported — re-attach after import]', photo:null};
+    }
+    return r;
+  });
+  const blob = new Blob([JSON.stringify(exportable, null, 2)], {type:'application/json'});
+  const a    = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `fishdex_${new Date().toISOString().slice(0,10)}.json`
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('✓ Exported!');
+}
+
+function triggerImport() { document.getElementById('import-file').click(); }
+
+async function importData(e) {
+  const file = e.target.files?.[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      const arr = JSON.parse(ev.target.result);
+      if (!Array.isArray(arr)) throw new Error('Expected a JSON array.');
+      if (!confirm(`Import ${arr.length} catches? Existing entries with matching IDs will be overwritten.`)) return;
+      // Assign IDs if missing
+      for (const r of arr) {
+        if (!r.id) r.id = uuid();
+        await dbPut(r);
+      }
+      toast(`✓ Imported ${arr.length} catches!`);
+      refreshCurrentView();
+    } catch(err) {
+      alert('Import failed: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   REFRESH
+────────────────────────────────────────────────────────────────── */
+function refreshCurrentView() {
+  const v = state.currentView;
+  if      (v==='view-dash')     renderDashboard();
+  else if (v==='view-lifelist') renderLifeList();
+  else if (v==='view-log')      renderLog();
+  else if (v==='view-gallery')  renderGallery();
+  else if (v==='view-map')      updateMapMarkers();
+  else if (v==='view-stats')    renderStats();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   KEYBOARD SHORTCUTS
+────────────────────────────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+  const ss = document.getElementById('slideshow').classList.contains('open');
+  if (ss) {
+    if (e.key === 'ArrowRight') ssNav(+1);
+    if (e.key === 'ArrowLeft')  ssNav(-1);
+    if (e.key === 'Escape')     closeSlideshow();
+    return;
+  }
+  if (e.key === 'Escape') {
+    ['modal-add','modal-detail','modal-sp'].forEach(id => closeOverlay(id));
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────
+   CLOSE OVERLAY ON BACKDROP CLICK
+────────────────────────────────────────────────────────────────── */
+document.querySelectorAll('.overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeOverlay(el.id); });
+});
+
+/* ──────────────────────────────────────────────────────────────────
+   INIT
+────────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  renderDashboard();
+});
+</script>
+</div><!-- #app -->
+</body>
+</html>
