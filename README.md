@@ -1,14 +1,12 @@
-# 🎣 FishDex
+# FishDex
 
-**A personal fishing life list, catch log, and gallery — all in one file.**
+A personal fishing life list, catch log and photo gallery in one browser file.
 
-> Vibe coded with [Claude](https://claude.ai) by Anthropic. Zero frameworks, zero backend, zero nonsense.
+**[Open FishDex](https://michaelaperry.github.io/FishDex/)** or download
+[`index.html`](index.html) to run it locally. Entries stay in the browser
+where you record them. Export a backup before resetting browser data or switching devices.
 
-[![GitHub Pages](https://img.shields.io/badge/hosted%20on-GitHub%20Pages-22d3b6?style=flat-square&logo=github)](https://pages.github.com)
-[![Single File](https://img.shields.io/badge/deploy-single%20HTML%20file-c8a23e?style=flat-square)]()
-[![No Backend](https://img.shields.io/badge/backend-none-brightgreen?style=flat-square)]()
-
----
+Built with assistance from Claude.
 
 ## What It Does
 
